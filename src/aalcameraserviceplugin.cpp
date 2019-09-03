@@ -17,10 +17,12 @@
 #include "aalcameraserviceplugin.h"
 #include "aalcameraservice.h"
 
+#include <QByteArray>
 #include <QDebug>
 #include <QMetaType>
 #include <qgl.h>
 
+#include <hybris/properties/properties.h>
 #include <hybris/camera/camera_compatibility_layer.h>
 #include <hybris/camera/camera_compatibility_layer_capabilities.h>
 
@@ -84,8 +86,29 @@ QString AalServicePlugin::deviceDescription(const QByteArray &service, const QBy
     }
 }
 
+int AalServicePlugin::getCameraOrientationOverride(const QString deviceID) const {
+    QByteArray propertyName = QString("aal.camera.orientations.%1").arg(deviceID).toLocal8Bit();
+
+    char orientationStr[PROP_VALUE_MAX];
+    property_get(propertyName.data(), orientationStr, "");
+
+    bool ok;
+    int orientation = QString(orientationStr).toInt(&ok, /* base */ 10);
+    if (!ok) {
+        orientation = -1;
+    }
+
+    return orientation;
+}
+
 int AalServicePlugin::cameraOrientation(const QByteArray & device) const
 {
+    // Check for the override
+    int override = getCameraOrientationOverride(device);
+    if (override != -1) {
+        return override;
+    }
+
     int facing;
     int orientation;
 
@@ -96,7 +119,16 @@ int AalServicePlugin::cameraOrientation(const QByteArray & device) const
     }
 
     int result = android_camera_get_device_info(deviceID, &facing, &orientation);
-    return (result != 0) ? 0 : orientation;
+    if (result != 0) {
+        return 0;
+    }
+
+    // Android's orientation means differently compared to QT's orientation.
+    // On Android, it means "the angle that the camera image needs to be
+    // rotated", but on QT, it means "the physical orientation of the camera
+    // sensor". So, the value will have to be inverted.
+
+    return (360 - orientation) % 360;
 }
 
 QCamera::Position AalServicePlugin::cameraPosition(const QByteArray & device) const
