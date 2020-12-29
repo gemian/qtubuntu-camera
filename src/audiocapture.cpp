@@ -159,6 +159,7 @@ int AudioCapture::setupMicrophoneStream()
     };
 
     int error = 0;
+
     m_paStream = pa_simple_new(NULL, "qtubuntu-camera", PA_STREAM_RECORD, NULL, "record", &ss, NULL, &buf_attr, &error);
     if (m_paStream == NULL)
     {

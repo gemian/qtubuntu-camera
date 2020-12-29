@@ -467,6 +467,7 @@ int AalMediaRecorderControl::startRecording()
     setParameter(PARAM_AUDIO_BITRATE, 48000);
     setParameter(PARAM_AUDIO_CHANNELS, 2);
     setParameter(PARAM_AUTIO_SAMPLING, 96000);
+
     int rotation = m_service->rotationHandler()->calculateRotation();
     setParameter(PARAM_ORIENTATION, rotation);
 

@@ -34,7 +34,6 @@
 
 #include <hybris/camera/camera_compatibility_layer.h>
 
-#include <QtGui/QGuiApplication>
 #include <QDebug>
 #include <cmath>
 
@@ -43,8 +42,7 @@ AalCameraService *AalCameraService::m_service = 0;
 AalCameraService::AalCameraService(QObject *parent):
     QMediaService(parent),
     m_androidControl(0),
-    m_androidListener(0),
-    m_restoreStateWhenApplicationActive(false)
+    m_androidListener(0)
 {
     m_service = this;
 
@@ -64,11 +62,6 @@ AalCameraService::AalCameraService(QObject *parent):
     m_exposureControl = new AalCameraExposureControl(this);
     m_infoControl = new AalCameraInfoControl(this);
     m_rotationHandler = new RotationHandler(this);
-
-    QGuiApplication* application = qobject_cast<QGuiApplication*>(QGuiApplication::instance());
-    m_previousApplicationState = application->applicationState();
-    connect(application, &QGuiApplication::applicationStateChanged,
-            this, &AalCameraService::onApplicationStateChanged);
 }
 
 AalCameraService::~AalCameraService()
@@ -191,6 +184,8 @@ bool AalCameraService::connectCamera()
     m_androidListener->context = m_androidControl;
     initControls(m_androidControl, m_androidListener);
 
+    this->m_cameraControl->setStatus(QCamera::LoadedStatus);
+
     return true;
 }
 
@@ -211,6 +206,8 @@ void AalCameraService::disconnectCamera()
         delete m_androidListener;
         m_androidListener = 0;
     }
+
+    this->m_cameraControl->setStatus(QCamera::UnloadedStatus);
 }
 
 void AalCameraService::startPreview()
@@ -218,6 +215,8 @@ void AalCameraService::startPreview()
     if (m_videoOutput) {
         m_videoOutput->startPreview();
     }
+
+    this->m_cameraControl->setStatus(QCamera::ActiveStatus);
 }
 
 void AalCameraService::stopPreview()
@@ -225,6 +224,8 @@ void AalCameraService::stopPreview()
     if (m_videoOutput) {
         m_videoOutput->stopPreview();
     }
+
+    this->m_cameraControl->setStatus(QCamera::LoadedStatus);
 }
 
 bool AalCameraService::isPreviewStarted() const
@@ -253,10 +254,17 @@ bool AalCameraService::isBackCameraUsed() const
  */
 void AalCameraService::enablePhotoMode()
 {
+    if (isPreviewStarted())
+        // Trick to make applications notice the change.
+        this->m_cameraControl->setStatus(QCamera::StartingStatus);
+
     m_flashControl->init(m_service->androidControl());
     m_imageEncoderControl->enablePhotoMode();
     m_focusControl->enablePhotoMode();
     m_viewfinderControl->setAspectRatio(m_imageEncoderControl->getAspectRatio());
+
+    if (isPreviewStarted())
+        this->m_cameraControl->setStatus(QCamera::ActiveStatus);
 }
 
 /*!
@@ -264,9 +272,16 @@ void AalCameraService::enablePhotoMode()
  */
 void AalCameraService::enableVideoMode()
 {
+    if (isPreviewStarted())
+        // Trick to make applications notice the change.
+        this->m_cameraControl->setStatus(QCamera::StartingStatus);
+
     m_flashControl->init(m_service->androidControl());
     m_focusControl->enableVideoMode();
     m_viewfinderControl->setAspectRatio(m_videoEncoderControl->getAspectRatio());
+
+    if (isPreviewStarted())
+        this->m_cameraControl->setStatus(QCamera::ActiveStatus);
 }
 
 /*!
@@ -293,25 +308,6 @@ void AalCameraService::updateCaptureReady()
         ready = false;
 
     m_imageCaptureControl->setReady(ready);
-}
-
-void AalCameraService::onApplicationStateChanged()
-{
-    QGuiApplication* application = qobject_cast<QGuiApplication*>(QGuiApplication::instance());
-    Qt::ApplicationState applicationState = application->applicationState();
-
-    if (applicationState == Qt::ApplicationActive) {
-        if (m_restoreStateWhenApplicationActive) {
-            m_cameraControl->setState(m_cameraStateWhenApplicationActive);
-        }
-    } else if (m_previousApplicationState == Qt::ApplicationActive) {
-        m_cameraStateWhenApplicationActive = m_cameraControl->state();
-        m_restoreStateWhenApplicationActive = true;
-        m_mediaRecorderControl->setState(QMediaRecorder::StoppedState);
-        m_cameraControl->setState(QCamera::UnloadedState);
-    }
-
-    m_previousApplicationState = applicationState;
 }
 
 /*!
